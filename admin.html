@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>لوحة تحكم الأدمن</title>
+<link rel="stylesheet" href="style.css">
+<style>
+.page{max-width:1200px;margin:auto;padding:16px;display:grid;gap:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h2{margin:0 0 6px;font-size:1.1rem}
+.row{display:flex;gap:8px}
+.row button{white-space:nowrap}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{background:var(--paper);color:var(--mute);font-weight:500}
+.tag{padding:2px 8px;border-radius:99px;font-size:.8rem;background:#DDEFE4;color:var(--ok)}
+.tag.bad{background:#F8DDDA;color:var(--bad)}
+.status{margin-top:10px;font-size:.9rem;min-height:1.4em}
+#gate{max-width:360px;margin:12vh auto;padding:0 16px}
+.list{margin:8px 0 0;padding:0;list-style:none;max-height:180px;overflow:auto;font-size:.9rem}
+.list li{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
+.list button{padding:3px 10px;font-size:.8rem}
+</style>
+</head>
+<body>
+<header class="top"><h1>لوحة تحكم الأدمن</h1><p>إدارة المحتوى ومتابعة الدخول</p></header>
+
+<div id="gate" class="card">
+  <label for="pw">كلمة المرور</label>
+  <input id="pw" type="password" autocomplete="current-password">
+  <div class="row" style="margin-top:12px"><button id="login">دخول</button></div>
+  <div class="status" id="gstat"></div>
+</div>
+
+<main class="page" id="app" hidden>
+  <div class="grid">
+    <section class="card">
+      <h2>المواد والفصول</h2>
+      <label for="subName">اسم مادة جديدة</label>
+      <div class="row"><input id="subName"><button id="addSub">إضافة مادة</button></div>
+      <label for="secSub">فصل جديد داخل مادة</label>
+      <select id="secSub"></select>
+      <div class="row" style="margin-top:8px"><input id="secName" placeholder="اسم الفصل أو القسم"><button id="addSec">إضافة فصل</button></div>
+    </section>
+
+    <section class="card">
+      <h2>رفع شيت جديد</h2>
+      <label for="upSub">المادة</label><select id="upSub"></select>
+      <label for="upSec">الفصل</label><select id="upSec"></select>
+      <label for="upNum">رقم الشيت (1 = الأول)</label><input id="upNum" type="number" min="1" value="1">
+      <label for="upTitle">عنوان الشيت (اختياري)</label><input id="upTitle">
+      <label for="upFile">الملف (PDF أو صورة)</label><input id="upFile" type="file" accept=".pdf,image/*">
+      <div class="row" style="margin-top:12px"><button id="upBtn">رفع الشيت</button></div>
+      <div class="status" id="upStat" role="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>الشيتات المرفوعة</h2>
+      <ul class="list" id="sheetList"></ul>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h2>سجل فتح الملفات</h2>
+      <button class="ghost" id="refresh">تحديث</button>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>الملف</th><th>الجلسة</th><th>عنوان IP</th><th>الجهاز / المتصفح</th><th>وقت الدخول</th><th>الحالة</th><th>إجراء</th></tr></thead>
+        <tbody id="logs"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script src="db.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+let S = { sub: [], sec: [], sh: [], rev: [] };
+
+/* ---- الدخول (للتجربة فقط؛ في الإنتاج استخدم Supabase Auth) ---- */
+function enter() { $('#gate').hidden = true; $('#app').hidden = false; init(); }
+if (sessionStorage.getItem('geo_admin') === '1') enter();
+$('#login').onclick = () => {
+  if ($('#pw').value === CONFIG.ADMIN_PASSWORD) { sessionStorage.setItem('geo_admin', '1'); enter(); }
+  else $('#gstat').textContent = 'كلمة المرور غير صحيحة.';
+};
+
+/* ---- البيانات ---- */
+const opts = (arr, f = 'name') => arr.map(x => `<option value="${esc(x.id)}">${esc(x[f])}</option>`).join('') || '<option value="">لا يوجد</option>';
+
+async function loadStructure() {
+  [S.sub, S.sec, S.sh] = await Promise.all([DB.list('subjects'), DB.list('sections'), DB.list('sheets')]);
+  $('#secSub').innerHTML = opts(S.sub);
+  const keep = $('#upSub').value;
+  $('#upSub').innerHTML = opts(S.sub);
+  if (keep) $('#upSub').value = keep;
+  fillSections();
+  $('#sheetList').innerHTML = S.sh.sort((a, b) => a.number - b.number).map(h => {
+    const c = S.sec.find(x => x.id === h.section_id);
+    return `<li><span>${esc(c?.name || '؟')}: شيت ${esc(h.number)} ${esc(h.title || '')}</span><button class="danger" data-del="${esc(h.id)}">حذف</button></li>`;
+  }).join('') || '<li class="empty">لا شيتات بعد</li>';
+}
+const fillSections = () => { $('#upSec').innerHTML = opts(S.sec.filter(c => c.subject_id === $('#upSub').value)); };
+$('#upSub').onchange = fillSections;
+
+$('#addSub').onclick = async () => {
+  const n = $('#subName').value.trim(); if (!n) return;
+  await DB.insert('subjects', { name: n }); $('#subName').value = ''; loadStructure();
+};
+$('#addSec').onclick = async () => {
+  const n = $('#secName').value.trim(), s = $('#secSub').value; if (!n || !s) return;
+  await DB.insert('sections', { name: n, subject_id: s }); $('#secName').value = ''; loadStructure();
+};
+$('#sheetList').onclick = async e => {
+  const id = e.target.dataset.del;
+  if (id && confirm('حذف هذا الشيت نهائياً؟')) { await DB.remove('sheets', id); loadStructure(); }
+};
+
+$('#upBtn').onclick = async () => {
+  const st = $('#upStat'), file = $('#upFile').files[0], sec = $('#upSec').value, num = parseInt($('#upNum').value, 10);
+  if (!sec) return st.textContent = 'اختر مادة وفصلاً أولاً.';
+  if (!file) return st.textContent = 'اختر ملفاً للرفع.';
+  if (!num || num < 1) return st.textContent = 'أدخل رقم شيت صحيحاً.';
+  st.textContent = 'جارٍ الرفع...';
+  try {
+    const url = await DB.upload(file);
+    await DB.insert('sheets', { section_id: sec, number: num, title: $('#upTitle').value.trim(), file_url: url });
+    st.textContent = 'تم رفع الشيت.'; $('#upFile').value = ''; $('#upTitle').value = ''; $('#upNum').value = num + 1;
+    loadStructure();
+  } catch (err) { st.textContent = 'تعذّر الرفع: ' + err.message; }
+};
+
+/* ---- سجل الدخول وسحب الصلاحية ---- */
+async function loadLogs() {
+  const [logs, rev] = await Promise.all([DB.list('access_logs'), DB.list('revoked_sessions')]);
+  S.rev = rev;
+  const bad = new Set(rev.map(r => r.session_id));
+  $('#logs').innerHTML = logs.sort((a, b) => new Date(b.opened_at) - new Date(a.opened_at)).map(l => {
+    const r = bad.has(l.session_id);
+    return `<tr><td>${esc(l.sheet_title)}</td><td>${esc(l.session_id)}</td><td dir="ltr">${esc(l.ip)}</td><td>${esc(l.device)}</td>
+      <td>${new Date(l.opened_at).toLocaleString('ar-EG')}</td>
+      <td><span class="tag ${r ? 'bad' : ''}">${r ? 'ملغاة' : 'فعّالة'}</span></td>
+      <td>${r ? `<button class="ok" data-restore="${esc(l.session_id)}">استعادة</button>` : `<button class="danger" data-revoke="${esc(l.session_id)}">سحب الصلاحية</button>`}</td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="empty">لم يُفتح أي ملف بعد.</td></tr>';
+}
+$('#logs').onclick = async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.revoke) {
+    if (!confirm('سحب الصلاحية عن هذه الجلسة؟ سيتوقف العرض عندها خلال ثوانٍ.')) return;
+    await DB.insert('revoked_sessions', { session_id: b.dataset.revoke });
+  } else if (b.dataset.restore) {
+    const r = S.rev.find(x => x.session_id === b.dataset.restore);
+    if (r) await DB.remove('revoked_sessions', r.id);
+  }
+  loadLogs();
+};
+$('#refresh').onclick = loadLogs;
+
+function init() { loadStructure(); loadLogs(); setInterval(loadLogs, 15000); }
+</script>
+</body>
+</html>

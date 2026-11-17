@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>شيتات قسم الجغرافيا</title>
+<link rel="stylesheet" href="style.css">
+<style>
+.wrap{display:grid;grid-template-columns:320px 1fr;gap:16px;padding:16px;max-width:1400px;margin:auto;min-height:calc(100vh - 100px)}
+.side,.view{background:var(--card);border:1px solid var(--line);border-radius:12px}
+.side{padding:8px;align-self:start;max-height:calc(100vh - 130px);overflow:auto}
+details details{margin-right:14px;border-right:2px solid var(--line);padding-right:8px}
+summary{cursor:pointer;padding:8px;font-weight:700;border-radius:6px}
+summary:hover{background:var(--paper)}
+details details>summary{font-weight:500}
+ul{list-style:none;margin:0 0 6px;padding:0}
+li button{width:100%;text-align:right;background:transparent;color:var(--ink);padding:7px 10px;border-radius:6px}
+li button:hover,li button.on{background:var(--sea);color:#fff}
+.view{display:flex;flex-direction:column;min-height:70vh}
+.bar{padding:12px 16px;border-bottom:1px solid var(--line);font-weight:700}
+#frame{flex:1;border:0;width:100%;min-height:65vh;display:none}
+.msg{margin:auto;text-align:center;color:var(--mute);padding:24px}
+.msg.bad{color:var(--bad);font-weight:700}
+@media(max-width:800px){.wrap{grid-template-columns:1fr}.side{max-height:45vh}}
+</style>
+</head>
+<body>
+<header class="top"><h1>شيتات قسم الجغرافيا</h1><p>اختر المادة ثم الفصل ثم الشيت</p></header>
+<div class="wrap">
+  <nav class="side" id="tree" aria-label="المواد"></nav>
+  <section class="view">
+    <div class="bar" id="title">لم يُفتح شيت بعد</div>
+    <div class="msg" id="msg">اختر شيتاً من القائمة لعرضه هنا.</div>
+    <iframe id="frame" title="عرض الشيت"></iframe>
+  </section>
+</div>
+
+<script src="db.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const ORD = ['الأول','الثاني','الثالث','الرابع','الخامس','السادس','السابع','الثامن','التاسع','العاشر'];
+const SID = Session.id(), ipP = Session.ip();
+let timer = null;
+
+const isRevoked = async () => (await DB.list('revoked_sessions')).some(r => r.session_id === SID);
+const label = h => `الشيت ${ORD[h.number - 1] || h.number}${h.title ? ': ' + h.title : ''}`;
+
+async function loadTree() {
+  const [sub, sec, sh] = await Promise.all([DB.list('subjects'), DB.list('sections'), DB.list('sheets')]);
+  const tree = $('#tree');
+  if (!sub.length) { tree.innerHTML = '<p class="empty">لا توجد مواد بعد. ستظهر هنا فور إضافتها من لوحة التحكم.</p>'; return; }
+  tree.innerHTML = sub.map(s => `<details open><summary>${esc(s.name)}</summary>` +
+    sec.filter(c => c.subject_id === s.id).map(c => `<details><summary>${esc(c.name)}</summary><ul>` +
+      (sh.filter(h => h.section_id === c.id).sort((a, b) => a.number - b.number)
+        .map(h => `<li><button data-id="${esc(h.id)}">${esc(label(h))}</button></li>`).join('') || '<li class="empty">لا شيتات بعد</li>') +
+    '</ul></details>').join('') + '</details>').join('');
+  tree.onclick = e => {
+    const b = e.target.closest('button[data-id]');
+    if (!b) return;
+    tree.querySelectorAll('button.on').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    openSheet(sh.find(x => x.id === b.dataset.id));
+  };
+}
+
+function block() {
+  clearInterval(timer);
+  $('#frame').src = 'about:blank';
+  $('#frame').style.display = 'none';
+  $('#title').textContent = 'تعذّر العرض';
+  const m = $('#msg'); m.style.display = ''; m.className = 'msg bad';
+  m.textContent = 'تم إيقاف صلاحية الوصول لهذا الجهاز. تواصل مع المشرف لإعادة تفعيلها.';
+}
+
+async function openSheet(h) {
+  if (await isRevoked()) return block();
+  $('#title').textContent = label(h);
+  $('#msg').style.display = 'none';
+  const f = $('#frame'); f.style.display = 'block'; f.src = h.file_url;
+  DB.insert('access_logs', { sheet_id: h.id, sheet_title: label(h), session_id: SID, ip: await ipP, device: Session.device() });
+  clearInterval(timer);
+  timer = setInterval(async () => { if (await isRevoked()) block(); }, 10000); // فحص دوري للصلاحية
+}
+
+loadTree();
+</script>
+</body>
+</html>

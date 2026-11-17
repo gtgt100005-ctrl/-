@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&display=swap');
+:root{--paper:#F0F5F4;--ink:#10282E;--sea:#0E7C86;--sea-d:#0A5A62;--line:#CBDADA;--card:#fff;--bad:#B3261E;--ok:#2E7D4F;--mute:#5B7378}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:'IBM Plex Sans Arabic',Tahoma,sans-serif;background:var(--paper);color:var(--ink);line-height:1.7}
+:focus-visible{outline:3px solid var(--sea);outline-offset:2px}
+.top{background:var(--ink) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='120' fill='none' stroke='%2335A0A8' stroke-opacity='.4'%3E%3Cellipse cx='90' cy='60' rx='40' ry='20'/%3E%3Cellipse cx='90' cy='60' rx='80' ry='38'/%3E%3Cellipse cx='90' cy='60' rx='125' ry='56'/%3E%3Cellipse cx='90' cy='60' rx='170' ry='78'/%3E%3C/svg%3E") left center/auto 100% no-repeat;color:#fff;padding:22px 20px}
+.top h1{margin:0;font-size:1.5rem}
+.top p{margin:2px 0 0;color:#A9C9CC;font-size:.9rem}
+button,input,select{font:inherit}
+button{cursor:pointer;border:0;border-radius:8px;padding:8px 14px;background:var(--sea);color:#fff;font-weight:500}
+button:hover{background:var(--sea-d)}
+button.danger{background:var(--bad)}button.ok{background:var(--ok)}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+input,select{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+label{display:block;font-size:.88rem;color:var(--mute);margin:10px 0 4px}
+.empty{color:var(--mute);padding:12px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
